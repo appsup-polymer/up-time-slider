@@ -1,0 +1,149 @@
+<link rel="import" href="moment-lib.html">
+
+<script>
+
+    /**
+     * `iron-range-behavior` provides the behavior for something with a minimum to maximum range.
+     *
+     * @demo demo/index.html
+     * @polymerBehavior
+     */
+    Polymer.UpTimeRangeBehavior = {
+
+        properties: {
+
+            /**
+             * The number that represents the current value.
+             */
+            value: {
+                type: Date,
+                notify: true,
+                value: function() {
+                    return new Date(this.getAttribute("min"));
+                },
+                reflectToAttribute: true
+            },
+
+            epochValue: {
+                type: Number,
+                computed: '_dateToEpoch(value)'
+            },
+
+            /**
+             * The number that indicates the minimum value of the range.
+             */
+            min: {
+                type: Date,
+                notify: true
+            },
+
+            epochMin: {
+                type: Number,
+                computed: '_dateToEpoch(min)'
+            },
+
+            /**
+             * The number that indicates the maximum value of the range.
+             */
+            max: {
+                type: Date,
+                notify: true
+            },
+
+            epochMax: {
+                type: Date,
+                computed: '_dateToEpoch(max)'
+            },
+
+            /**
+             * Specifies the value granularity of the range's value.
+             */
+            step: {
+                type: String,
+                value: "millisecond",
+                notify: true
+            },
+
+            epochStep: {
+                type: Number,
+                computed: '_intervalToEpoch(step)'
+            },
+
+            /**
+             * Returns the ratio of the value.
+             */
+            ratio: {
+                type: Number,
+                value: 0,
+                readOnly: true,
+                notify: true
+            },
+        },
+
+        observers: [
+            '_update(epochValue, epochMin, epochMax, epochStep)'
+        ],
+
+        _calcRatio: function(value) {
+            return (this._clampValue(value) - this.epochMin) / (this.epochMax - this.epochMin);
+        },
+
+        _clampValue: function(value) {
+            return Math.min(this.epochMax, Math.max(this.epochMin, this._calcStep(value)));
+        },
+
+        _calcStep: function(value) {
+            /**
+             * if we calculate the step using
+             * `Math.round(value / step) * step` we may hit a precision point issue
+             * eg. 0.1 * 0.2 =  0.020000000000000004
+             * http://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html
+             *
+             * as a work around we can divide by the reciprocal of `step`
+             */
+                // polymer/issues/2493
+            value = parseFloat(value);
+            if (isNaN(value)) {
+                throw new Error();
+            }
+            return this.step ? (Math.round((value + this.epochMin) / this.epochStep) / (1 / this.epochStep)) - this.epochMin :
+                    value;
+        },
+
+        _validateValue: function() {
+            var v = this._epochToDate(this._clampValue(this.epochValue));
+            this.value = this.oldValue = isNaN(v) ? this.oldValue : v;
+            return this.value !== v;
+        },
+
+        _update: function() {
+            this._validateValue();
+            this._setRatio(this._calcRatio(this.epochValue) * 100);
+        },
+
+
+        _epochToDate: function(epoch) {
+            return new Date(epoch);
+        },
+
+
+        _dateToEpoch: function(date) {
+            return date&&date.getTime();
+        },
+
+        _intervalToEpoch: function(interval) {
+            if (!interval) {
+                return 1;
+            }
+            var parts = interval.split(" ");
+            if (parts.length===1) {
+                return moment.duration(1,parts[0]).asMilliseconds();
+            }
+            if (parts.length==2) {
+                return moment.duration(parseInt(parts[0]),parts[1]).asMilliseconds();
+            }
+            throw new Error("Interval format error: '"+interval+"'");
+        }
+
+    };
+</script>

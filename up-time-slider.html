@@ -1,0 +1,621 @@
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../paper-slider/paper-slider.html">
+<link rel="import" href="../iron-resizable-behavior/iron-resizable-behavior.html">
+<link rel="import" href="moment-lib.html">
+<link rel="import" href="up-time-range-behavior.html">
+
+<dom-module id="up-time-slider">
+
+  <link rel="import" type="css" href="../paper-slider/paper-slider.css">
+
+  <style>
+    .slider-ticks-container {
+      position: absolute;
+      bottom: 15px;
+      left: 15px;
+      height: 40px;
+      width: calc(100% + 2px);
+      overflow-x: hidden;
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+    .slider-ticks {
+      position: absolute;
+      bottom: 0;
+      height: 2px;
+      width: 100%;
+    }
+
+    .slider-tick {
+      position: relative;
+    }
+    .slider-tick > .text {
+      text-align: center;
+      position: absolute;
+      bottom: 0;
+      @apply(--paper-font-caption);
+      color: var(--disabled-text-color);
+      padding-left: 4px;
+      margin-bottom: 2px;
+      margin-left: 1px;
+    }
+
+    .slider-tick > .text::before {
+      content: "";
+      height: 10px;
+      width: 1px;
+      display: block;
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      background: var(--disabled-text-color);
+    }
+
+    .slider-ticks::after,
+    .slider-tick::after {
+      content: "";
+      display: block;
+      width: 3px;
+      height: 2px;
+      border-radius: 50%;
+      background-color: black;
+    }
+
+    paper-progress {
+      --paper-progress-container-color: var(--paper-slider-container-color, --google-grey-300);
+      --paper-progress-active-color: var(--paper-slider-container-color, --google-grey-300);
+      --paper-progress-secondary-color: var(--paper-slider-secondary-color, --google-blue-300);
+    }
+
+  </style>
+  <template>
+    <div id="sliderContainer"
+         class$="[[_getClassNames(disabled, pin, snaps, immediateValue, min, expand, dragging, transiting, editable)]]">
+
+      <div class="bar-container">
+        <paper-progress
+                disabled$="[[disabled]]"
+                id="sliderBar"
+                aria-hidden="true"
+                min="[[_add(epochMin,offset)]]"
+                max="[[_add(epochMin,offset,epochZoom)]]"
+                step="[[epochStep]]"
+                value="[[_first(epochMin,offset,epochZoom)]]"
+                secondary-progress="[[_first(epochMax,epochMin,offset,epochZoom)]]"
+                on-down="_bardown"
+                on-up="_resetKnob"
+                on-track="_onTrack">
+        </paper-progress>
+      </div>
+
+      <template is="dom-if" if="[[snaps]]">
+        <div class="slider-markers horizontal layout">
+          <template is="dom-repeat" items="[[markers]]">
+            <div class="slider-marker flex"></div>
+          </template>
+        </div>
+      </template>
+
+      <div class="slider-ticks-container" hidden$="[[!tickInterval]]">
+        <div class="slider-ticks horizontal layout">
+          <template is="dom-repeat" items="[[ticks]]">
+            <div class="slider-tick flex"><div class="text">{{item}}</div></div>
+          </template>
+        </div>
+      </div>
+
+      <div id="sliderKnob"
+           class="center-justified center horizontal layout"
+           on-down="_knobdown"
+           on-up="_resetKnob"
+           on-track="_onTrack"
+           on-transitionend="_knobTransitionEnd">
+        <paper-ripple
+                center
+                id="ink"
+                class="circle"
+                hidden$="[[!receivedFocusFromKeyboard]]">
+        </paper-ripple>
+        <div id="sliderKnobInner" value$="[[_epochToString(immediateValue,pin)]]"></div>
+      </div>
+    </div>
+
+    <template is="dom-if" if="[[editable]]">
+      <paper-input
+              id="input"
+              class="slider-input"
+              disabled$="[[disabled]]"
+              on-change="_inputChange"
+              value="[[_fixForInput(immediateValue)]]"
+      >
+      </paper-input>
+    </template>
+  </template>
+
+</dom-module>
+
+<script>
+
+  Polymer({
+    is: 'up-time-slider',
+
+    behaviors: [
+      Polymer.IronResizableBehavior,
+      Polymer.IronFormElementBehavior,
+      Polymer.PaperInkyFocusBehavior,
+      Polymer.UpTimeRangeBehavior
+    ],
+
+    properties: {
+
+      /**
+       * If true, the slider thumb snaps to tick marks evenly spaced based
+       * on the `step` property value.
+       */
+      snaps: {
+        type: Boolean,
+        value: false,
+        notify: true
+      },
+
+      /**
+       * If true, a pin with numeric value label is shown when the slider thumb
+       * is pressed. Use for settings for which users need to know the exact
+       * value of the setting.
+       */
+      pin: {
+        type: String,
+        value: null,
+        notify: true
+      },
+
+      /**
+       * If true, an input is shown and user can use it to set the slider value.
+       */
+      editable: {
+        type: Boolean,
+        value: false
+      },
+
+      /**
+       * The immediate value of the slider.  This value is updated while the user
+       * is dragging the slider.
+       */
+      immediateValue: {
+        type: Number,
+        value: 0,
+        readOnly: true,
+        notify: true
+      },
+
+      /**
+       * The maximum number of markers
+       */
+      maxMarkers: {
+        type: Number,
+        value: 0,
+        notify: true,
+        observer: '_maxMarkersChanged'
+      },
+
+      /**
+       * If true, the knob is expanded
+       */
+      expand: {
+        type: Boolean,
+        value: false,
+        readOnly: true
+      },
+
+      /**
+       * True when the user is dragging the slider.
+       */
+      dragging: {
+        type: Boolean,
+        value: false,
+        readOnly: true
+      },
+
+      transiting: {
+        type: Boolean,
+        value: false,
+        readOnly: true
+      },
+
+      markers: {
+        type: Array,
+        readOnly: true,
+        value: []
+      },
+
+      zoom: {
+        type: String,
+        value: "day"
+      },
+
+      epochZoom: {
+        type: Number,
+        computed: '_intervalToEpoch(zoom)'
+      },
+
+      offset: {
+        type: Number,
+        value: 0,
+        observer: '_offsetChanged'
+      },
+
+      tickInterval: {
+        type: String,
+        value: "day",
+      },
+
+      tickFormat: {
+        type: String,
+        value: "ddd D"
+      },
+
+      ticks: {
+        type: Array,
+        readOnly: true,
+        value: []
+      },
+
+      align: {
+        type: String
+      }
+
+    },
+
+    observers: [
+      '_updateKnob(epochValue, epochMin, epochMax, snaps, epochStep)',
+      '_minChanged(min)',
+      '_maxChanged(max)',
+      '_valueChanged(value)',
+      '_immediateValueChanged(immediateValue)',
+      '_tickIntervalChanged(tickInterval, epochMin, epochMax, epochZoom)',
+      '_computeOffset(epochMin, align)'
+    ],
+
+    listeners: {
+      'iron-resize': '_onResize'
+    },
+
+    hostAttributes: {
+      role: 'slider',
+      tabindex: 0
+    },
+
+    keyBindings: {
+      'left down pagedown home': '_decrementKey',
+      'right up pageup end': '_incrementKey'
+    },
+
+    ready: function() {
+      // issue polymer/polymer#1305
+
+      this.async(function() {
+        this._updateKnob(this.epochValue);
+      }, 1);
+    },
+
+    /**
+     * Increases value by `step` but not above `max`.
+     * @method increment
+     */
+    increment: function() {
+      this.value = this._epochToDate(this._clampValue(this.epochValue + this.epochStep));
+    },
+
+    /**
+     * Decreases value by `step` but not below `min`.
+     * @method decrement
+     */
+    decrement: function() {
+      this.value = this._epochToDate(this._clampValue(this.epochValue - this.epochStep));
+    },
+
+    _updateKnob: function(value) {
+      this._positionKnob(this._calcProgress(value));
+    },
+
+    _minChanged: function() {
+      this.setAttribute('aria-valuemin', this.min);
+    },
+
+    _maxChanged: function() {
+      this.setAttribute('aria-valuemax', this.max);
+    },
+
+    _valueChanged: function() {
+      this.setAttribute('aria-valuenow', this.value);
+      this.fire('value-change');
+    },
+
+    _immediateValueChanged: function() {
+      if (this.dragging) {
+        this.fire('immediate-value-change');
+      } else {
+        this.value = this._epochToDate(this.immediateValue);
+      }
+      if (this.immediateValue>this.$.sliderBar.max) {
+        this.move(-this.$.sliderBar.max+this.immediateValue);
+      }
+      if (this.immediateValue<this.$.sliderBar.min) {
+        this.move(-this.$.sliderBar.min+this.immediateValue);
+      }
+    },
+
+    _fixForInput: function(immediateValue) {
+      // paper-input/issues/114
+      return this.immediateValue.toString();
+    },
+
+    _expandKnob: function() {
+      this._setExpand(true);
+    },
+
+    _resetKnob: function() {
+      this.cancelDebouncer('expandKnob');
+      this._setExpand(false);
+    },
+
+    _positionKnob: function(ratio) {
+      this._setImmediateValue(this._calcStep(this._calcKnobPosition(ratio)));
+      this._setRatio(this._calcProgress(this.immediateValue));
+
+      this.$.sliderKnob.style.left = (this.ratio * 100) + '%';
+    },
+
+    _inputChange: function() {
+      this.value = this._epochToDate(this.$$('#input').value);
+      this.fire('change');
+    },
+
+    _calcKnobPosition: function(ratio) {
+      return Math.round(this.epochZoom * ratio + this.epochMin + this.offset);
+    },
+
+    _onTrack: function(event) {
+      event.stopPropagation();
+      switch (event.detail.state) {
+        case 'start':
+          this._trackStart(event);
+          break;
+        case 'track':
+          this._trackX(event);
+          break;
+        case 'end':
+          this._trackEnd();
+          break;
+      }
+    },
+
+    _trackStart: function(event) {
+      this._w = this.$.sliderBar.offsetWidth;
+      this._x = this.ratio * this._w;
+      this._startx = this._x || 0;
+      this._minx = - this._startx;
+      this._maxx = this._w - this._startx;
+      this.$.sliderKnob.classList.add('dragging');
+
+      this._setDragging(true);
+    },
+
+    _trackX: function(e) {
+      if (!this.dragging) {
+        this._trackStart(e);
+      }
+
+      var dx = e.detail.dx;//Math.min(this._maxx, Math.max(this._minx, e.detail.dx));
+      this._x = this._startx + dx;
+
+      var immediateValue = this._clampValue(this._calcStep(this._calcKnobPosition(this._x / this._w)));
+      this._setImmediateValue(immediateValue);
+
+      // update knob's position
+      var translateX = ((this._calcProgress(immediateValue) * this._w) - this._startx);
+      this.translate3d(translateX + 'px', 0, 0, this.$.sliderKnob);
+    },
+
+    _calcProgress: function(v) {
+      return (this._calcRatio(v)*(this.epochMax-this.epochMin)-this.offset)/this.epochZoom;
+    },
+
+    _trackEnd: function() {
+      var s = this.$.sliderKnob.style;
+
+      this.$.sliderKnob.classList.remove('dragging');
+      this._setDragging(false);
+      this._resetKnob();
+      this.value = this._epochToDate(this.immediateValue);
+
+      s.transform = s.webkitTransform = '';
+
+      this.fire('change');
+    },
+
+    _knobdown: function(event) {
+      this._expandKnob();
+
+      // cancel selection
+      event.preventDefault();
+
+      // set the focus manually because we will called prevent default
+      this.focus();
+    },
+
+    _bardown: function(event) {
+      this._w = this.$.sliderBar.offsetWidth;
+      var rect = this.$.sliderBar.getBoundingClientRect();
+      var ratio = (event.detail.x - rect.left) / this._w;
+      var prevRatio = this.ratio;
+
+      this._setTransiting(true);
+
+      this._positionKnob(ratio);
+
+      this.debounce('expandKnob', this._expandKnob, 60);
+
+      // if the ratio doesn't change, sliderKnob's animation won't start
+      // and `_knobTransitionEnd` won't be called
+      // Therefore, we need to manually update the `transiting` state
+
+      if (prevRatio === this.ratio) {
+        this._setTransiting(false);
+      }
+
+      this.async(function() {
+        this.fire('change');
+      });
+
+      // cancel selection
+      event.preventDefault();
+    },
+
+    _knobTransitionEnd: function(event) {
+      if (event.target === this.$.sliderKnob) {
+        this._setTransiting(false);
+      }
+    },
+
+    _maxMarkersChanged: function(maxMarkers) {
+      var l = ((this.epochMax - this.epochMin) / this.epochStep)||0;
+      if (!this.snaps && l > maxMarkers) {
+        this._setMarkers([]);
+      } else {
+        this._setMarkers(new Array(l));
+      }
+    },
+
+    _mergeClasses: function(classes) {
+      return Object.keys(classes).filter(
+              function(className) {
+                return classes[className];
+              }).join(' ');
+    },
+
+    _getClassNames: function() {
+      return this._mergeClasses({
+        disabled: this.disabled,
+        pin: this.pin,
+        snaps: this.snaps,
+        ring: this.immediateValue <= this.min,
+        expand: this.expand,
+        dragging: this.dragging,
+        transiting: this.transiting,
+        editable: this.editable
+      });
+    },
+
+    _incrementKey: function(event) {
+      if (event.detail.key === 'end') {
+        this.value = this.max;
+      } else {
+        this.increment();
+      }
+      this.fire('change');
+    },
+
+    _decrementKey: function(event) {
+      if (event.detail.key === 'home') {
+        this.value = this.min;
+      } else {
+        this.decrement();
+      }
+      this.fire('change');
+    },
+
+    _epochToString: function(epoch, format) {
+      return moment(epoch).format(format);
+    },
+
+    _onResize: function() {
+      this._tickIntervalChanged(this.tickInterval, this.epochMin, this.epochMax, this.epochZoom);
+    },
+
+    _tickIntervalChanged: function(interval, min, max, zoom) {
+      if (!interval) {
+        this._setTicks([]);
+        return;
+      }
+      var w = this.$.sliderBar.offsetWidth;
+      var step = this._intervalToEpoch(interval);
+      var start = moment(min).startOf(interval).unix()*1000;
+      var end = moment(max).startOf(interval).unix()*1000+step;
+
+      var ticks = new Array((end-start)/step);
+      for (var i=0;i<ticks.length;i++) {
+        ticks[i] = moment(start+i*step).format(this.tickFormat);
+      }
+      this._setTicks(ticks);
+
+      var startX = (start - min - this.offset) * w / zoom;
+      var endX = (end - min - this.offset) * w / zoom;
+      var el = this.querySelector(".slider-ticks");
+
+      el.style.width = ''+(endX-startX)+'px';
+      el.style.left = ''+startX+'px';
+
+    },
+
+    _add: function() {
+      return Array.apply(null,arguments).reduce(function(a,b) {return a+b});
+    },
+
+    _first: function(v) {
+      return v;
+    },
+
+    move: function(v) {
+      if (typeof v==="number") {
+        if ((this.$.sliderBar.min+v>this.immediateValue)||
+                (this.$.sliderBar.max+v<this.immediateValue)) {
+          return;
+        }
+        this.offset += v;
+      } else {
+        this.move(this._intervalToEpoch(v));
+      }
+    },
+
+    _offsetChanged: function() {
+      if (!this._readied) {
+        return;
+      }
+      if (this.dragging) {
+      } else {
+        this._updateKnob(this.epochValue);
+      }
+      this._onResize();
+    },
+
+    _computeOffset: function(min, align) {
+      this.offset = moment(min).startOf(align).toDate().getTime()-min;
+    }
+
+
+  });
+
+  /**
+   * Fired when the slider's value changes.
+   *
+   * @event value-change
+   */
+
+  /**
+   * Fired when the slider's immediateValue changes.
+   *
+   * @event immediate-value-change
+   */
+
+  /**
+   * Fired when the slider's value changes due to user interaction.
+   *
+   * Changes to the slider's value due to changes in an underlying
+   * bound variable will not trigger this event.
+   *
+   * @event change
+   */
+
+</script>
