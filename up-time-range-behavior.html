@@ -89,7 +89,14 @@
         },
 
         _clampValue: function(value) {
-            return Math.min(this.epochMax, Math.max(this.epochMin, this._calcStep(value)));
+            if (isNaN(value)) {
+                return this.epochMin;
+            }
+            value = Math.max(this.epochMin, this._calcStep(value));
+            if (this.epochMax!==undefined) {
+                value = Math.min(this.epochMax, value);
+            }
+            return value;
         },
 
         _calcStep: function(value) {
