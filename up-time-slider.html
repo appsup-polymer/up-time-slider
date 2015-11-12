@@ -788,11 +788,12 @@
 
       var start = today.clone().add(-Math.floor(today.diff(moment(min+this.offset))/step)*step);
 
-      var ticks = this.ticks;
+      var ticks = new Array(this.ticks.length);
       for (var i=0;i<ticks.length;i++) {
         var v = moment(start+i*step).format(this.tickFormat);
-        this.set('ticks.'+i, v);
+        ticks[i] = v;
       }
+      this._setTicks(ticks);
 
       var startX = (start - min - offset) * w / zoom;
       var endX = (start+ticks.length*step - min - offset) * w / zoom;
