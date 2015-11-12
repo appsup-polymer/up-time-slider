@@ -314,11 +314,6 @@
                 disabled$="[[disabled]]"
                 id="sliderBar"
                 aria-hidden="true"
-                min="[[_add(epochMin,offset)]]"
-                max="[[_add(epochMin,offset,epochZoom)]]"
-                step="[[epochStep]]"
-                value="[[_first(epochMin,offset,epochZoom)]]"
-                secondary-progress="[[_first(epochMax,epochMin,offset,epochZoom)]]"
                 on-down="_bardown"
                 on-up="_resetKnob"
                 on-track="_onTrack">
@@ -517,7 +512,8 @@
       '_immediateValueChanged(immediateValue)',
       '_createTicks(tickInterval, epochZoom)',
       '_positionTicks(epochMin, offset)',
-      '_computeOffset(epochMin, align)'
+      '_computeOffset(epochMin, align)',
+      '_updateProgressBar(epochMin, epochMax, epochZoom, offset)'
     ],
 
     listeners: {
@@ -821,16 +817,6 @@
       this._positionTicks(this.epochMin, this.offset);
     },
 
-
-
-    _add: function() {
-      return Array.apply(null,arguments).reduce(function(a,b) {return a+b});
-    },
-
-    _first: function(v) {
-      return v;
-    },
-
     canMove: function(v) {
       if (typeof v==="number") {
         var newMin = this.$.sliderBar.min+v;
@@ -876,8 +862,14 @@
 
     _computeOffset: function(min, align) {
       this.offset = moment(min).startOf(align).toDate().getTime()-min;
-    }
+    },
 
+    _updateProgressBar: function(epochMin, epochMax, epochZoom, offset) {
+      this.$.sliderBar.min = epochMin+offset;
+      this.$.sliderBar.max = epochMin+offset+epochZoom;
+      this.$.sliderBar.value = epochMin;
+      this.$.sliderBar.secondaryProgress = epochMax;
+    }
 
   });
 
