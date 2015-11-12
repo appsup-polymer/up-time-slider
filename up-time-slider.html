@@ -499,6 +499,11 @@
 
       align: {
         type: String
+      },
+
+      noDragToMove: {
+        type: Boolean,
+        value: false
       }
 
     },
@@ -647,7 +652,7 @@
         this._trackStart(e);
       }
 
-      var dx = e.detail.dx;//Math.min(this._maxx, Math.max(this._minx, e.detail.dx));
+      var dx = this.noDragToMove ? Math.min(this._maxx, Math.max(this._minx, e.detail.dx)) : e.detail.dx;
       this._x = this._startx + dx;
 
       var immediateValue = this._clampValue(this._calcStep(this._calcKnobPosition(this._x / this._w)));
