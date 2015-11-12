@@ -824,15 +824,36 @@
       return v;
     },
 
-    move: function(v) {
+    canMove: function(v) {
       if (typeof v==="number") {
-        if ((this.$.sliderBar.min+v>this.immediateValue)||
-                (this.$.sliderBar.max+v<this.immediateValue)) {
-          return;
+        var newMin = this.$.sliderBar.min+v;
+        var newMax = this.$.sliderBar.max+v;
+        if ((newMin>this.immediateValue)||
+                (newMax<this.immediateValue)) {
+
+          var newV = Math.min(this.epochMax,Math.max(this.epochMin,this.immediateValue+v));
+
+          if ((newMin>newV)||
+                  (newMax<newV)) {
+            return false;
+          }
+
+          return [this.offset+v, newV];
         }
-        this.offset += v;
+        return [this.offset+v, this.immediateValue];
       } else {
-        this.move(this._intervalToEpoch(v));
+        return this.canMove(this._intervalToEpoch(v));
+      }
+
+    },
+
+    move: function(v) {
+      var diff = this.canMove(v);
+      if (diff) {
+        this._setImmediateValue(diff[1]);
+        this.offset = diff[0];
+        this.$.sliderBar.value = this.epochMin;
+        this.$.sliderBar.secondaryProgress = this.epochMax;
       }
     },
 
