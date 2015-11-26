@@ -1,6 +1,6 @@
 
 <link rel="import" href="../polymer/polymer.html">
-<link rel="import" href="../paper-slider/paper-slider.html">
+<link rel="import" href="../paper-progress/paper-progress.html">
 <link rel="import" href="../iron-resizable-behavior/iron-resizable-behavior.html">
 <link rel="import" href="moment-lib.html">
 <link rel="import" href="up-time-range-behavior.html">
@@ -555,6 +555,8 @@
     },
 
     _updateKnob: function(value) {
+      this._updateProgressBar(this.epochMin, this.epochMax, this.epochZoom, this.offset);
+      this._setImmediateValue(value);
       this._positionKnob(this._calcProgress(value));
     },
 
@@ -600,7 +602,6 @@
     },
 
     _positionKnob: function(ratio) {
-      this._setImmediateValue(this._calcStep(this._calcKnobPosition(ratio)));
       this._setRatio(this._calcProgress(this.immediateValue));
 
       this.$.sliderKnob.style.left = (this.ratio * 100) + '%';
