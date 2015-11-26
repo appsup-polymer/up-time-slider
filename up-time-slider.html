@@ -800,7 +800,7 @@
 
       var startX = (start - min - offset) * w / zoom;
       var endX = (start+ticks.length*step - min - offset) * w / zoom;
-      var el = this.querySelector(".slider-ticks");
+      var el = this.$$(".slider-ticks");
 
       el.style.width = ''+(endX-startX)+'px';
       el.style.left = ''+startX+'px';
